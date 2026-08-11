@@ -124,7 +124,7 @@ RUN ldconfig \
         /recoll/state \
         /recoll/tmp \
     && sh -n /usr/local/bin/entrypoint.sh \
-    && recollindex --version >/dev/null \
+    && recollindex -h 2>&1 | grep -Fq 'Recoll version: Recoll 1.44.1' \
     && command -v recollq >/dev/null \
     && tesseract --version >/dev/null \
     && tesseract --list-langs >/dev/null \
