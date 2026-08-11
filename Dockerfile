@@ -6,16 +6,69 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         git \
-    && git clone https://framagit.org/medoc92/recollwebui.git /src/recoll-webui \
+    && git clone \
+        https://framagit.org/medoc92/recollwebui.git \
+        /src/recoll-webui \
     && git -C /src/recoll-webui checkout "${RECOLL_WEBUI_REF}" \
     && rm -rf /src/recoll-webui/.git \
     && rm -rf /var/lib/apt/lists/*
 
 
+FROM debian:trixie-slim AS recoll-build
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG RECOLL_VERSION=1.44.1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        g++ \
+        bison \
+        meson \
+        ninja-build \
+        pkgconf \
+        libxapian-dev \
+        libxslt1-dev \
+        zlib1g-dev \
+        libmagic-dev \
+        libaspell-dev \
+        libchm-dev \
+        python3-all \
+        python3-all-dev \
+        python3-setuptools \
+    && cd /tmp \
+    && curl -fsSLO \
+        "https://www.recoll.org/recoll-${RECOLL_VERSION}.tar.gz" \
+    && curl -fsSLO \
+        "https://www.recoll.org/recoll-${RECOLL_VERSION}.tar.gz.sha256" \
+    && read -r expected_hash _ \
+        < "recoll-${RECOLL_VERSION}.tar.gz.sha256" \
+    && printf '%s  %s\n' \
+        "${expected_hash}" \
+        "recoll-${RECOLL_VERSION}.tar.gz" \
+        | sha256sum -c - \
+    && tar -xzf "recoll-${RECOLL_VERSION}.tar.gz" \
+    && cd "recoll-${RECOLL_VERSION}" \
+    && meson setup \
+        --buildtype=release \
+        -Dprefix=/usr \
+        -Dqtgui=false \
+        -Dx11mon=false \
+        -Duserdoc=false \
+        -Dsystemd=false \
+        -Drecollq=true \
+        -Dpython-module=true \
+        -Dpython-chm=true \
+        -Dpython-aspell=true \
+        build \
+    && ninja -C build \
+    && DESTDIR=/out meson install -C build
+
+
 FROM debian:trixie-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG RECOLL_EXPECTED_VERSION=1.44.1
 
 ENV RECOLL_CONFDIR=/recoll/config \
     ROLE=indexer \
@@ -27,42 +80,31 @@ ENV RECOLL_CONFDIR=/recoll/config \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
-        curl \
-        gnupg \
-    && curl -fsSL \
-        https://www.lesbonscomptes.com/pages/lesbonscomptes.gpg \
-        -o /usr/share/keyrings/lesbonscomptes.gpg \
-    && arch="$(dpkg --print-architecture)" \
-    && case "${arch}" in \
-         amd64) \
-           curl -fsSL \
-             https://www.recoll.org/pages/recoll-trixie.sources \
-             -o /etc/apt/sources.list.d/recoll.sources \
-           ;; \
-         arm64) \
-           curl -fsSL \
-             https://www.recoll.org/pages/recoll-rtrixie.sources \
-             -o /etc/apt/sources.list.d/recoll.sources \
-           ;; \
-         *) \
-           echo "Unsupported architecture: ${arch}" >&2; \
-           exit 1 \
-           ;; \
-       esac \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        recoll \
-        python3-recoll \
+        tzdata \
+        python3 \
+        python3-bottle \
         python3-waitress \
+        libxapian30 \
+        libxslt1.1 \
+        libxml2 \
+        zlib1g \
+        libmagic1t64 \
+        libaspell15 \
+        libchm1 \
+        libgcc-s1 \
+        libstdc++6 \
         tesseract-ocr-all \
         poppler-utils \
         antiword \
+        wv \
         unrtf \
         libimage-exiftool-perl \
         python3-lxml \
         python3-mutagen \
         python3-py7zr \
+        python3-chardet \
         libwpd-tools \
+        libwps-tools \
         djvulibre-bin \
         pff-tools \
         ghostscript \
@@ -70,26 +112,36 @@ RUN apt-get update \
         untex \
         groff \
         aspell \
-    && installed_version="$(dpkg-query -W -f='${Version}' recoll)" \
-    && case "${installed_version}" in \
-         "${RECOLL_EXPECTED_VERSION}"*) ;; \
-         *) \
-           echo "Unexpected Recoll version: ${installed_version}" >&2; \
-           exit 1 \
-           ;; \
-       esac \
+        xsltproc \
     && rm -rf /var/lib/apt/lists/*
 
+COPY --from=recoll-build /out/usr/ /usr/
 COPY --from=webui-fetch /src/recoll-webui /opt/recoll-webui
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
-RUN chmod 0755 /usr/local/bin/entrypoint.sh \
+RUN ldconfig \
+    && chmod 0755 /usr/local/bin/entrypoint.sh \
     && mkdir -p \
         /documents/source \
         /recoll/config \
         /recoll/index \
         /recoll/cache \
-        /recoll/tmp
+        /recoll/tmp \
+    && command -v recollindex >/dev/null \
+    && command -v recollq >/dev/null \
+    && command -v tesseract >/dev/null \
+    && command -v pdftotext >/dev/null \
+    && command -v antiword >/dev/null \
+    && command -v unrtf >/dev/null \
+    && python3 -c 'from recoll import recoll' \
+    && test -f /usr/share/recoll/filters/rclpdf.py \
+    && test -f /usr/share/recoll/filters/rclimgp.py \
+    && tesseract --list-langs 2>/dev/null \
+        | grep -qx 'eng' \
+    && tesseract --list-langs 2>/dev/null \
+        | grep -qx 'chi_sim' \
+    && tesseract --list-langs 2>/dev/null \
+        | grep -qx 'chi_tra'
 
 EXPOSE 8080
 
