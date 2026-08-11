@@ -9,10 +9,10 @@ RUN apt-get update \
     && git clone \
         https://framagit.org/medoc92/recollwebui.git \
         /src/recoll-webui \
-    && git -C /src/recoll-webui checkout "${RECOLL_WEBUI_REF}" \
+    && git -C /src/recoll-webui checkout --detach "${RECOLL_WEBUI_REF}" \
+    && test "$(git -C /src/recoll-webui rev-parse HEAD)" = "${RECOLL_WEBUI_REF}" \
     && rm -rf /src/recoll-webui/.git \
     && rm -rf /var/lib/apt/lists/*
-
 
 FROM debian:trixie-slim AS recoll-build
 
@@ -63,24 +63,19 @@ RUN apt-get update \
     && ninja -C build \
     && DESTDIR=/out meson install -C build
 
-
 FROM debian:trixie-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
-
-ENV RECOLL_CONFDIR=/recoll/config \
-    ROLE=indexer \
-    RECOLL_INDEX_RUN_ON_START=true \
-    RECOLL_INDEX_INTERVAL_SECONDS=21600 \
-    PYTHONDONTWRITEBYTECODE=1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         tzdata \
+        util-linux \
         python3 \
         python3-bottle \
         python3-waitress \
+        python3-py3exiv2 \
         libxapian30 \
         libxslt1.1 \
         libxml2 \
@@ -112,6 +107,7 @@ RUN apt-get update \
         groff \
         aspell \
         xsltproc \
+    && apt-get check \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=recoll-build /out/usr/ /usr/
@@ -125,24 +121,29 @@ RUN ldconfig \
         /recoll/config \
         /recoll/index \
         /recoll/cache \
+        /recoll/state \
         /recoll/tmp \
-    && command -v recollindex >/dev/null \
+    && sh -n /usr/local/bin/entrypoint.sh \
+    && recollindex --version >/dev/null \
     && command -v recollq >/dev/null \
-    && command -v tesseract >/dev/null \
+    && tesseract --version >/dev/null \
+    && tesseract --list-langs >/dev/null \
+    && test "$(dpkg-query -W -f='${Status}' tesseract-ocr-all)" = "install ok installed" \
     && command -v pdftotext >/dev/null \
     && command -v antiword >/dev/null \
     && command -v unrtf >/dev/null \
-    && python3 -c 'from recoll import recoll' \
-    && test -f /usr/share/recoll/filters/rclpdf.py \
-    && test -f /usr/share/recoll/filters/rclimgp.py \
-    && tesseract --list-langs 2>/dev/null \
-        | grep -qx 'eng' \
-    && tesseract --list-langs 2>/dev/null \
-        | grep -qx 'chi_sim' \
-    && tesseract --list-langs 2>/dev/null \
-        | grep -qx 'chi_tra'
+    && command -v setpriv >/dev/null \
+    && python3 -c 'from recoll import recoll, rclextract; import bottle, waitress, pyexiv2, py7zr, mutagen, lxml, chardet' \
+    && test -x /usr/share/recoll/filters/rclpdf.py \
+    && test -x /usr/share/recoll/filters/rclimg.py \
+    && test -x /usr/share/recoll/filters/rclimgp.py \
+    && python3 -c 'compile(open("/opt/recoll-webui/webui-standalone.py", encoding="utf-8").read(), "webui-standalone.py", "exec"); compile(open("/opt/recoll-webui/webui.py", encoding="utf-8").read(), "webui.py", "exec")'
 
-ENV TMPDIR=/recoll/tmp
+ENV RECOLL_CONFDIR=/recoll/config \
+    RECOLL_TMPDIR=/recoll/tmp \
+    TMPDIR=/recoll/tmp \
+    HOME=/recoll/tmp \
+    PYTHONDONTWRITEBYTECODE=1
 
 EXPOSE 8080
 
