@@ -32,6 +32,8 @@ RUN apt-get update \
         libxslt1-dev \
         zlib1g-dev \
         libmagic-dev \
+        libjsoncpp-dev \
+        libssl-dev \
         libaspell-dev \
         libchm-dev \
         python3-all \
@@ -83,6 +85,8 @@ RUN apt-get update \
         libxml2 \
         zlib1g \
         libmagic1t64 \
+        libjsoncpp26 \
+        libssl3t64 \
         libaspell15 \
         libchm1 \
         libgcc-s1 \
