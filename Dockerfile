@@ -55,12 +55,6 @@ RUN apt-get update \
         -Dprefix=/usr \
         -Dqtgui=false \
         -Dx11mon=false \
-        -Duserdoc=false \
-        -Dsystemd=false \
-        -Drecollq=true \
-        -Dpython-module=true \
-        -Dpython-chm=true \
-        -Dpython-aspell=true \
         build \
     && ninja -C build \
     && DESTDIR=/out meson install -C build
