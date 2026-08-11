@@ -70,8 +70,7 @@ ENV RECOLL_CONFDIR=/recoll/config \
     ROLE=indexer \
     RECOLL_INDEX_RUN_ON_START=true \
     RECOLL_INDEX_INTERVAL_SECONDS=21600 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    TMPDIR=/recoll/tmp
+    PYTHONDONTWRITEBYTECODE=1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -140,6 +139,8 @@ RUN ldconfig \
         | grep -qx 'chi_sim' \
     && tesseract --list-langs 2>/dev/null \
         | grep -qx 'chi_tra'
+
+ENV TMPDIR=/recoll/tmp
 
 EXPOSE 8080
 
