@@ -56,6 +56,7 @@ RUN apt-get update \
         --buildtype=release \
         -Dprefix=/usr \
         -Dqtgui=false \
+        -Dlibdir=lib \
         -Drecollq=true \
         -Dx11mon=false \
         build \
